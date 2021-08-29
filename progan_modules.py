@@ -5,13 +5,24 @@ from torch.nn import functional as F
 from math import sqrt
 
 
-class EqualLR:
+class EqualLR:  # Equalized learning rate
+    """
+    The idea behind equalized learning rate is to scale the weights at each layer with a constant such that the updated
+    weight w’ is scaled to be w’ = w /c, where c is a constant at each layer. This is done during training to keep the
+    weights in the network at a similar scale during training. This approach is unique because usually modern optimizers
+    such as RMSProp and Adam use the standard deviation of the gradient to normalize it. This is problematic in the case
+    where the weight is very large or small, in which case the standard deviation is an insufficient normalizer.
+
+    Source: https://towardsdatascience.com/progressively-growing-gans-9cb795caebee
+    """
+
     def __init__(self, name):
         self.name = name
 
     def compute_weight(self, module):
         weight = getattr(module, self.name + '_orig')
-        fan_in = weight.data.size(1) * weight.data[0][0].numel()
+        fan_in = weight.data.size(1) * weight.data[0][0].numel()  # todo: debug it to know what is happening here
+        # numel func: Returns the total number of elements in the tensor.
 
         return weight * sqrt(2 / fan_in)
 
@@ -23,6 +34,9 @@ class EqualLR:
         del module._parameters[name]
         module.register_parameter(name + '_orig', nn.Parameter(weight.data))
         module.register_forward_pre_hook(fn)
+        # The hook will be called every time before forward() is invoked.
+        # So before every forward() run this function will normalize weights of a passed module
+        # with self.compute_weight() func.
 
         return fn
 
@@ -65,9 +79,14 @@ class EqualConvTranspose2d(nn.Module):
         super().__init__()
 
         conv = nn.ConvTranspose2d(*args, **kwargs)
+        # ConvTransposed2d args that goes in here (in_channels, out_channels, kernel_size, stride, padding)
         conv.weight.data.normal_()
+        # tensor.normal_() will fill the tensor with values sampled from the normal distribution.
+        # The old values will be overwritten.
         conv.bias.data.zero_()
+        # same goes here I think
         self.conv = equal_lr(conv)
+        # now add equalized learning rate
 
     def forward(self, input):
         return self.conv(input)
@@ -133,6 +152,7 @@ class Generator(nn.Module):
             nn.LeakyReLU(0.1))
 
         self.progression_4 = ConvBlock(in_channel, in_channel, 3, 1, pixel_norm=pixel_norm)
+        # simple block with two convolutions, pixel norms and leaky relu
         self.progression_8 = ConvBlock(in_channel, in_channel, 3, 1, pixel_norm=pixel_norm)
         self.progression_16 = ConvBlock(in_channel, in_channel, 3, 1, pixel_norm=pixel_norm)
         self.progression_32 = ConvBlock(in_channel, in_channel, 3, 1, pixel_norm=pixel_norm)
@@ -140,7 +160,7 @@ class Generator(nn.Module):
         self.progression_128 = ConvBlock(in_channel // 2, in_channel // 4, 3, 1, pixel_norm=pixel_norm)
         self.progression_256 = ConvBlock(in_channel // 4, in_channel // 4, 3, 1, pixel_norm=pixel_norm)
 
-        self.to_rgb_8 = EqualConv2d(in_channel, 3, 1)
+        self.to_rgb_8 = EqualConv2d(in_channel, 3, 1)  # in_channel, out_channel, kernel_size
         self.to_rgb_16 = EqualConv2d(in_channel, 3, 1)
         self.to_rgb_32 = EqualConv2d(in_channel, 3, 1)
         self.to_rgb_64 = EqualConv2d(in_channel // 2, 3, 1)
@@ -150,7 +170,7 @@ class Generator(nn.Module):
         self.max_step = 6
 
     def progress(self, feat, module):
-        out = F.interpolate(feat, scale_factor=2, mode='bilinear', align_corners=False)
+        out = F.interpolate(feat, scale_factor=2, mode='bilinear', align_corners=False)  # upscaling
         out = module(out)
         return out
 
@@ -168,8 +188,13 @@ class Generator(nn.Module):
         if step > self.max_step:
             step = self.max_step
 
-        out_4 = self.input_layer(input.view(-1, self.input_dim, 1, 1))
+        out_4 = self.input_layer(input.view(-1, self.input_dim, 1, 1))  # here the latent vector is 'reshaped'
+        # in some retarded fashion (maybe I'm retarded, that's possible) but it just adds dimensions and yet
+        # the whole information is still describable by only one dimension
         out_4 = self.progression_4(out_4)
+        # so the training basically looks that first we train the 4x4 and then automaticly 8x8
+        # and after that we just start to do the progressive blending way of increasing the size
+        # I wonder why they omitted this step between 4x4 and 8x8
         out_8 = self.progress(out_4, self.progression_8)
         if step == 1:
             if self.tanh:

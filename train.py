@@ -26,7 +26,8 @@ def imagefolder_loader(path):
     def loader(transform):
         data = datasets.ImageFolder(path, transform=transform)
         data_loader = DataLoader(data, shuffle=True, batch_size=batch_size,
-                                 num_workers=4)
+                                 # num_workers=4)
+                                 num_workers=0)  # workaround for debugging
         return data_loader
 
     return loader
@@ -46,14 +47,16 @@ def sample_data(dataloader, image_size=4):
     return loader
 
 
-def train(generator, discriminator, init_step, loader, total_iter=600000):
+# def train(generator, discriminator, init_step, loader, total_iter=600000):
+def train(generator, discriminator, init_step, loader, total_iter=300000):
     step = init_step  # can be 1 = 8, 2 = 16, 3 = 32, 4 = 64, 5 = 128, 6 = 128
     data_loader = sample_data(loader, 4 * 2 ** step)
     dataset = iter(data_loader)
 
     # todo: those comments were needed to be able to run this progan for celeba 32x32
     # total_iter = 600000
-    total_iter_remain = total_iter - (total_iter // 6) * (step - 1)
+    # total_iter_remain = total_iter - (total_iter // 3) * (step - 1)
+    total_iter_remain = total_iter - (total_iter // 3) * (step - 1)
 
     pbar = tqdm(range(total_iter_remain))
 
@@ -94,16 +97,16 @@ def train(generator, discriminator, init_step, loader, total_iter=600000):
     for i in pbar:
         discriminator.zero_grad()
 
-        alpha = min(1, (2 / (total_iter // 6)) * iteration)
+        alpha = min(1, (2 / (total_iter // 3)) * iteration)
 
-        if iteration > total_iter // 6:
+        if iteration > total_iter // 3:
             alpha = 0
             iteration = 0
             step += 1
 
-            if step > 6:
+            if step > 3:
                 alpha = 1
-                step = 6
+                step = 3
             data_loader = sample_data(loader, 4 * 2 ** step)
             dataset = iter(data_loader)
 
@@ -171,15 +174,15 @@ def train(generator, discriminator, init_step, loader, total_iter=600000):
 
                 utils.save_image(
                     images,
-                    f'{log_folder}/sample/{str(i + 1).zfill(6)}.png',
+                    f'{log_folder}/sample/{str(i + 1).zfill(3)}.png',
                     nrow=10,
                     normalize=True,
                     range=(-1, 1))
 
         if (i + 1) % 10000 == 0 or i == 0:
             try:
-                torch.save(g_running.state_dict(), f'{log_folder}/checkpoint/{str(i + 1).zfill(6)}_g.model')
-                torch.save(discriminator.state_dict(), f'{log_folder}/checkpoint/{str(i + 1).zfill(6)}_d.model')
+                torch.save(g_running.state_dict(), f'{log_folder}/checkpoint/{str(i + 1).zfill(3)}_g.model')
+                torch.save(discriminator.state_dict(), f'{log_folder}/checkpoint/{str(i + 1).zfill(3)}_d.model')
             except:
                 pass
 
@@ -220,7 +223,7 @@ if __name__ == '__main__':
                         help='start from what resolution, 1 means 8x8 resolution, 2 means 16x16 resolution, ..., 6 means 256x256 resolution')
     parser.add_argument('--total_iter', type=int, default=300000,
                         help='how many iterations to train in total, the value is in assumption that init step is 1')
-    parser.add_argument('--pixel_norm', default=False, action="store_true",
+    parser.add_argument('--pixel_norm', default=True, action="store_true",
                         help='a normalization method inside the model, you can try use it or not depends on the dataset')
     parser.add_argument('--tanh', default=False, action="store_true",
                         help='an output non-linearity on the output of Generator, you can try use it or not depends on the dataset')
@@ -230,7 +233,8 @@ if __name__ == '__main__':
     print(str(args))
 
     trial_name = args.trial_name
-    device = torch.device("cuda:%d" % (args.gpu_id))
+    # device = torch.device("cuda:%d" % (args.gpu_id))
+    device = torch.device("cpu")
     input_code_size = args.z_dim
     batch_size = args.batch_size
     n_critic = args.n_critic
@@ -253,6 +257,9 @@ if __name__ == '__main__':
 
     accumulate(g_running, generator, 0)
 
-    loader = imagefolder_loader(args.path)
+    grzegos_data_path = '/home/grzegorz/grzegos_world/13_september_2021/celeba/img_align_celeba_smaller'
+
+    # loader = imagefolder_loader(args.path)
+    loader = imagefolder_loader(grzegos_data_path)
 
     train(generator, discriminator, args.init_step, loader, args.total_iter)
