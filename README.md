@@ -1,3 +1,6 @@
+# MEGA FORK
+This fork is driven by a hunger of knowledge. 
+
 # Progressive-GAN-pytorch
 A pytorch implementation of Progressive-GAN that is actually work, readable and simple to customize
 
