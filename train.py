@@ -126,7 +126,7 @@ def train(generator, discriminator, init_step, loader, total_iter=300000):
         real_predict = discriminator(
             real_image, step=step, alpha=alpha)
         real_predict = real_predict.mean() \
-                       - 0.001 * (real_predict ** 2).mean()
+                       - 0.001 * (real_predict ** 2).mean()  # why we do this here?
         real_predict.backward(mone)
 
         # sample input data: vector for Generator
@@ -221,7 +221,8 @@ if __name__ == '__main__':
     parser.add_argument('--n_critic', type=int, default=1, help='train Dhow many times while train G 1 time')
     parser.add_argument('--init_step', type=int, default=1,
                         help='start from what resolution, 1 means 8x8 resolution, 2 means 16x16 resolution, ..., 6 means 256x256 resolution')
-    parser.add_argument('--total_iter', type=int, default=300000,
+    # parser.add_argument('--total_iter', type=int, default=300000,
+    parser.add_argument('--total_iter', type=int, default=60,
                         help='how many iterations to train in total, the value is in assumption that init step is 1')
     parser.add_argument('--pixel_norm', default=True, action="store_true",
                         help='a normalization method inside the model, you can try use it or not depends on the dataset')

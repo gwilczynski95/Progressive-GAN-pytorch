@@ -137,6 +137,22 @@ class ConvBlock(nn.Module):
         return out
 
 
+class MnistConvBlock(nn.Module):
+    def __init__(self, in_channel, out_channel, kernel_size, padding, pixel_norm=True):
+        super().__init__()
+
+        convs = [EqualConv2d(in_channel, out_channel, kernel_size, padding=padding)]
+        if pixel_norm:
+            convs.append(PixelNorm())
+        convs.append(nn.LeakyReLU(0.1))
+
+        self.conv = nn.Sequential(*convs)
+
+    def forward(self, input):
+        out = self.conv(input)
+        return out
+
+
 def upscale(feat):
     return F.interpolate(feat, scale_factor=2, mode='bilinear', align_corners=False)
 
@@ -254,7 +270,7 @@ class Discriminator(nn.Module):
                 out = self.from_rgb[index](input)
 
             if i == 0:
-                out_std = torch.sqrt(out.var(0, unbiased=False) + 1e-8)
+                out_std = torch.sqrt(out.var(0, unbiased=False) + 1e-8)  # not sure what tensor.var(0) means
                 mean_std = out_std.mean()
                 mean_std = mean_std.expand(out.size(0), 1, 4, 4)
                 out = torch.cat([out, mean_std], 1)
@@ -271,7 +287,7 @@ class Discriminator(nn.Module):
                     skip_rgb = self.from_rgb[index + 1](skip_rgb)
                     out = (1 - alpha) * skip_rgb + alpha * out
 
-        out = out.squeeze(2).squeeze(2)
+        out = out.squeeze(2).squeeze(2)  # squeeze redundant dimensions
         # print(input.size(), out.size(), step)
         out = self.linear(out)
 
