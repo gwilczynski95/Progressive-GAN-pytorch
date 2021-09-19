@@ -37,7 +37,11 @@ class MyDataset(Dataset):
         x = self.data[index]
 
         if self.transform:
-            x = Image.fromarray(self.data[index]).convert('RGB')
+            if x.dtype == np.float32:
+                x = np.tanh(x) + 1
+                x *= 127.5
+                x = x.astype(np.int8)
+            x = Image.fromarray(x).convert('RGB')
             x = self.transform(x)
 
         return x
