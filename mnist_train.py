@@ -3,7 +3,6 @@ import numpy as np
 from PIL import Image
 import argparse
 import random
-import json
 
 import torch
 import torch.nn.functional as F
@@ -75,22 +74,6 @@ def train(generator, discriminator, init_step, loader, total_iter=300000):
     os.mkdir(log_folder)
     os.mkdir(log_folder + '/checkpoint')
     os.mkdir(log_folder + '/sample')
-    # Save training meta for automated FID score calculation
-    with open(os.path.join(log_folder, 'training_meta.json'), 'r') as file:
-        json.dump(
-            {
-                'generator': {
-                    'in_channel': generator.in_channel,
-                    'input_code_dim': generator.in_channel,
-                    'pixel_norm': generator.pixel_norm,
-                    'tanh': generator.tanh
-                },
-                'discriminator': {
-                    'feat_dim': discriminator.feat_dim
-                }
-            },
-            file
-        )
 
     config_file_name = os.path.join(log_folder, 'train_config_' + post_fix)
     config_file = open(config_file_name, 'w')
