@@ -3,6 +3,7 @@ import numpy as np
 from PIL import Image
 import argparse
 import random
+import json
 
 import torch
 import torch.nn.functional as F
@@ -22,11 +23,11 @@ def accumulate(model1, model2, decay=0.999):
         par1[k].data.mul_(decay).add_(1 - decay, par2[k].data)
 
 
-def imagefolder_loader(path):
+def imagefolder_loader(path, data_batch_size):
     def loader(transform):
         # data = datasets.ImageFolder(path, transform=transform)
         data = datasets.MNIST(path, transform=transform, download=True)
-        data_loader = DataLoader(data, shuffle=True, batch_size=batch_size,
+        data_loader = DataLoader(data, shuffle=True, batch_size=data_batch_size,
                                  # num_workers=4)
                                  num_workers=0)  # workaround for debugging
         return data_loader
@@ -74,6 +75,22 @@ def train(generator, discriminator, init_step, loader, total_iter=300000):
     os.mkdir(log_folder)
     os.mkdir(log_folder + '/checkpoint')
     os.mkdir(log_folder + '/sample')
+    # Save training meta for automated FID score calculation
+    with open(os.path.join(log_folder, 'training_meta.json'), 'r') as file:
+        json.dump(
+            {
+                'generator': {
+                    'in_channel': generator.in_channel,
+                    'input_code_dim': generator.in_channel,
+                    'pixel_norm': generator.pixel_norm,
+                    'tanh': generator.tanh
+                },
+                'discriminator': {
+                    'feat_dim': discriminator.feat_dim
+                }
+            },
+            file
+        )
 
     config_file_name = os.path.join(log_folder, 'train_config_' + post_fix)
     config_file = open(config_file_name, 'w')
@@ -261,6 +278,6 @@ if __name__ == '__main__':
     grzegos_data_path = '/home/grzegorz/grzegos_world/13_september_2021/mnist/'
 
     # loader = imagefolder_loader(args.path)
-    loader = imagefolder_loader(grzegos_data_path)
+    loader = imagefolder_loader(grzegos_data_path, batch_size)
 
     train(generator, discriminator, args.init_step, loader, args.total_iter)

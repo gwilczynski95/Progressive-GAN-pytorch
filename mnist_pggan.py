@@ -9,7 +9,9 @@ class Generator(nn.Module):
     def __init__(self, input_code_dim=128, in_channel=64, pixel_norm=True, tanh=True):
         super().__init__()
         self.input_dim = input_code_dim
+        self.in_channel = in_channel
         self.tanh = tanh
+        self.pixel_norm = pixel_norm
         self.input_layer = nn.Sequential(
             EqualConvTranspose2d(input_code_dim, in_channel, 4, 1, 0),
             PixelNorm(),
@@ -75,7 +77,7 @@ class Generator(nn.Module):
 class Discriminator(nn.Module):
     def __init__(self, feat_dim=64):
         super().__init__()
-
+        self.feat_dim = feat_dim
         self.progression = nn.ModuleList([MnistConvBlock(feat_dim, feat_dim, 3, 1),
                                           MnistConvBlock(feat_dim, feat_dim, 3, 1),
                                           MnistConvBlock(feat_dim, feat_dim, 3, 1),
