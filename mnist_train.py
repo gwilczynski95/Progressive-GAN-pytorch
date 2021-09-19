@@ -1,13 +1,10 @@
+import json
+
 from tqdm import tqdm
-import numpy as np
-from PIL import Image
-import argparse
-import random
 
 import torch
-import torch.nn.functional as F
-from torch import nn, optim
-from torch.autograd import Variable, grad
+from torch import optim
+from torch.autograd import grad
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms, utils
 
@@ -47,7 +44,7 @@ def mnist_sample_data(dataloader, image_size=4):
 
 
 # def train(generator, discriminator, init_step, loader, total_iter=600000):
-def train(generator, discriminator, init_step, loader, total_iter=300000):
+def train(generator, discriminator, init_step, loader, max_step, total_iter=300000):
     step = init_step  # can be 1 = 8, 2 = 16, 3 = 32, 4 = 64, 5 = 128, 6 = 128
     data_loader = mnist_sample_data(loader, 4 * 2 ** step)
     dataset = iter(data_loader)
@@ -55,7 +52,7 @@ def train(generator, discriminator, init_step, loader, total_iter=300000):
     # todo: those comments were needed to be able to run this progan for mnist 32x32
     # total_iter = 600000
     # total_iter_remain = total_iter - (total_iter // 3) * (step - 1)
-    total_iter_remain = total_iter - (total_iter // 3) * (step - 1)
+    total_iter_remain = total_iter - (total_iter // max_step) * (step - 1)
 
     last_step_additional_iterations = 100000
 
@@ -75,10 +72,25 @@ def train(generator, discriminator, init_step, loader, total_iter=300000):
     os.mkdir(log_folder + '/checkpoint')
     os.mkdir(log_folder + '/sample')
 
-    config_file_name = os.path.join(log_folder, 'train_config_' + post_fix)
-    config_file = open(config_file_name, 'w')
-    config_file.write(str(args))
-    config_file.close()
+    config_info = {
+        'generator': {
+            'in_channel': generator.in_channel,
+            'input_code_dim': generator.in_channel,
+            'pixel_norm': generator.pixel_norm,
+            'tanh': generator.tanh
+        },
+        'discriminator': {
+            'feat_dim': discriminator.feat_dim
+        },
+        'batch_size': data_loader.batch_size,
+        'learning_rate': g_optimizer.defaults['lr'],
+        'total_iter': total_iter,
+        'max_step': max_step
+    }
+
+    config_file_name = os.path.join(log_folder, 'train_config_' + post_fix[:-4] + '.json')
+    with open(config_file_name, 'w') as file:
+        json.dump(config_info, file)
 
     log_file_name = os.path.join(log_folder, 'train_log_' + post_fix)
     log_file = open(log_file_name, 'w')
@@ -98,16 +110,16 @@ def train(generator, discriminator, init_step, loader, total_iter=300000):
     for i in pbar:
         discriminator.zero_grad()
 
-        alpha = min(1, (2 / (total_iter // 3)) * iteration)
+        alpha = min(1, (2 / (total_iter // max_step)) * iteration)
 
-        if iteration > total_iter // 3:
+        if iteration > total_iter // max_step:
             alpha = 0
             iteration = 0
             step += 1
 
-            if step > 3:
+            if step > max_step:
                 alpha = 1
-                step = 3
+                step = max_step
             data_loader = mnist_sample_data(loader, 4 * 2 ** step)
             dataset = iter(data_loader)
 
@@ -180,7 +192,7 @@ def train(generator, discriminator, init_step, loader, total_iter=300000):
                     normalize=True,
                     range=(-1, 1))
 
-        if (i + 1) % 10000 == 0 or i == 0:
+        if (i + 1) % 2000 == 0 or i == 0:
             try:
                 torch.save(g_running.state_dict(), f'{log_folder}/checkpoint/{str(i + 1).zfill(3)}_g.model')
                 torch.save(discriminator.state_dict(), f'{log_folder}/checkpoint/{str(i + 1).zfill(3)}_d.model')
@@ -205,46 +217,24 @@ def train(generator, discriminator, init_step, loader, total_iter=300000):
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(
-        description='Progressive GAN, during training, the model will learn to generate  images from a low resolution, then progressively getting high resolution ')
+    trial_name = 'test_1'
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    input_code_size = 128
+    channels = 128
+    batch_size = 4
+    n_critic = 1
+    pixel_norm = True
+    tanh = False
+    learning_rate = 0.001
+    initial_step = 1
+    total_iterations = 90000
+    maximal_step = 3
 
-    parser.add_argument('--path', type=str,
-                        help='path of specified dataset, should be a folder that has one or many sub image folders inside')
-    parser.add_argument('--trial_name', type=str, default="test1", help='a brief description of the training trial')
-    parser.add_argument('--gpu_id', type=int, default=0, help='0 is the first gpu, 1 is the second gpu, etc.')
-    parser.add_argument('--lr', type=float, default=0.001,
-                        help='learning rate, default is 1e-3, usually dont need to change it, you can try make it bigger, such as 2e-3')
-    parser.add_argument('--z_dim', type=int, default=128,
-                        help='the initial latent vector\'s dimension, can be smaller such as 64, if the dataset is not diverse')
-    parser.add_argument('--channel', type=int, default=128,
-                        help='determines how big the model is, smaller value means faster training, but less capacity of the model')
-    parser.add_argument('--batch_size', type=int, default=4, help='how many images to train together at one iteration')
-    parser.add_argument('--n_critic', type=int, default=1, help='train Dhow many times while train G 1 time')
-    parser.add_argument('--init_step', type=int, default=1,
-                        help='start from what resolution, 1 means 8x8 resolution, 2 means 16x16 resolution, ..., 6 means 256x256 resolution')
-    parser.add_argument('--total_iter', type=int, default=90000,
-                        help='how many iterations to train in total, the value is in assumption that init step is 1')
-    parser.add_argument('--pixel_norm', default=True, action="store_true",
-                        help='a normalization method inside the model, you can try use it or not depends on the dataset')
-    parser.add_argument('--tanh', default=False, action="store_true",
-                        help='an output non-linearity on the output of Generator, you can try use it or not depends on the dataset')
-
-    args = parser.parse_args()
-
-    print(str(args))
-
-    trial_name = args.trial_name
-    # device = torch.device("cuda:%d" % (args.gpu_id))
-    device = torch.device("cpu")
-    input_code_size = args.z_dim
-    batch_size = args.batch_size
-    n_critic = args.n_critic
-
-    generator = Generator(in_channel=args.channel, input_code_dim=input_code_size, pixel_norm=args.pixel_norm,
-                          tanh=args.tanh).to(device)
-    discriminator = Discriminator(feat_dim=args.channel).to(device)
-    g_running = Generator(in_channel=args.channel, input_code_dim=input_code_size, pixel_norm=args.pixel_norm,
-                          tanh=args.tanh).to(device)
+    generator = Generator(in_channel=channels, input_code_dim=input_code_size, pixel_norm=pixel_norm,
+                          tanh=tanh).to(device)
+    discriminator = Discriminator(feat_dim=channels).to(device)
+    g_running = Generator(in_channel=channels, input_code_dim=input_code_size, pixel_norm=pixel_norm,
+                          tanh=tanh).to(device)
 
     ## you can directly load a pretrained model here
     # generator.load_state_dict(torch.load('./tr checkpoint/150000_g.model'))
@@ -253,8 +243,8 @@ if __name__ == '__main__':
 
     g_running.train(False)
 
-    g_optimizer = optim.Adam(generator.parameters(), lr=args.lr, betas=(0.0, 0.99))
-    d_optimizer = optim.Adam(discriminator.parameters(), lr=args.lr, betas=(0.0, 0.99))
+    g_optimizer = optim.Adam(generator.parameters(), lr=learning_rate, betas=(0.0, 0.99))
+    d_optimizer = optim.Adam(discriminator.parameters(), lr=learning_rate, betas=(0.0, 0.99))
 
     accumulate(g_running, generator, 0)
 
@@ -263,4 +253,4 @@ if __name__ == '__main__':
     # loader = imagefolder_loader(args.path)
     loader = imagefolder_loader(grzegos_data_path, batch_size)
 
-    train(generator, discriminator, args.init_step, loader, args.total_iter)
+    train(generator, discriminator, initial_step, loader, maximal_step, total_iterations)
