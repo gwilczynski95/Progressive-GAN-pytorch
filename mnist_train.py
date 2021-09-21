@@ -1,5 +1,6 @@
 import json
 
+import numpy as np
 from tqdm import tqdm
 
 import torch
@@ -111,17 +112,19 @@ def train(generator, discriminator, init_step, loader, max_step, total_iter=3000
         discriminator.zero_grad()
 
         alpha = min(1, (2 / (total_iter // max_step)) * iteration)
+        if iteration != np.inf:
+            if iteration > total_iter // max_step:
+                alpha = 0
+                iteration = 0
+                step += 1
 
-        if iteration > total_iter // max_step:
-            alpha = 0
-            iteration = 0
-            step += 1
-
-            if step > max_step:
-                alpha = 1
-                step = max_step
-            data_loader = mnist_sample_data(loader, 4 * 2 ** step)
-            dataset = iter(data_loader)
+                if step > max_step:
+                    iteration = np.inf
+                    alpha = 1
+                    step = max_step
+                else:
+                    data_loader = mnist_sample_data(loader, 4 * 2 ** step)
+                dataset = iter(data_loader)
 
         try:
             real_image, label = next(dataset)
@@ -130,7 +133,8 @@ def train(generator, discriminator, init_step, loader, max_step, total_iter=3000
             dataset = iter(data_loader)
             real_image, label = next(dataset)
 
-        iteration += 1
+        if iteration != np.inf:
+            iteration += 1
 
         ### 1. train Discriminator
         b_size = real_image.size(0)
