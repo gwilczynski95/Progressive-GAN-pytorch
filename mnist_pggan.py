@@ -1,3 +1,5 @@
+from functools import partial
+
 import torch
 from torch import nn
 from torch.nn import functional as F
@@ -6,7 +8,7 @@ from progan_modules import EqualConvTranspose2d, PixelNorm, ConvBlock, EqualConv
 
 
 class Generator(nn.Module):
-    def __init__(self, input_code_dim=128, in_channel=64, pixel_norm=True, tanh=True):
+    def __init__(self, input_code_dim=128, in_channel=64, pixel_norm=True, tanh=True, use_mnist_conv_blocks=True):
         super().__init__()
         self.input_dim = input_code_dim
         self.in_channel = in_channel
@@ -17,11 +19,13 @@ class Generator(nn.Module):
             PixelNorm(),
             nn.LeakyReLU(0.1))
 
-        self.progression_4 = MnistConvBlock(in_channel, in_channel, 3, 1, pixel_norm=pixel_norm)
+        conv_block = partial(MnistConvBlock) if use_mnist_conv_blocks else partial(ConvBlock)
+
+        self.progression_4 = conv_block(in_channel, in_channel, 3, 1, pixel_norm=pixel_norm)
         # simple block with two convolutions, pixel norms and leaky relu
-        self.progression_8 = MnistConvBlock(in_channel, in_channel, 3, 1, pixel_norm=pixel_norm)
-        self.progression_16 = MnistConvBlock(in_channel, in_channel, 3, 1, pixel_norm=pixel_norm)
-        self.progression_32 = MnistConvBlock(in_channel, in_channel, 3, 1, pixel_norm=pixel_norm)
+        self.progression_8 = conv_block(in_channel, in_channel, 3, 1, pixel_norm=pixel_norm)
+        self.progression_16 = conv_block(in_channel, in_channel, 3, 1, pixel_norm=pixel_norm)
+        self.progression_32 = conv_block(in_channel, in_channel, 3, 1, pixel_norm=pixel_norm)
 
         self.to_rgb_8 = EqualConv2d(in_channel, 1, 1)  # in_channel, out_channel, kernel_size
         self.to_rgb_16 = EqualConv2d(in_channel, 1, 1)
@@ -75,16 +79,14 @@ class Generator(nn.Module):
 
 
 class Discriminator(nn.Module):
-    def __init__(self, feat_dim=64):
+    def __init__(self, feat_dim=64, use_mnist_conv_blocks=True):
         super().__init__()
         self.feat_dim = feat_dim
-        self.progression = nn.ModuleList([MnistConvBlock(feat_dim, feat_dim, 3, 1),
-                                          MnistConvBlock(feat_dim, feat_dim, 3, 1),
-                                          MnistConvBlock(feat_dim, feat_dim, 3, 1),
+        conv_block = partial(MnistConvBlock) if use_mnist_conv_blocks else partial(ConvBlock)
+        self.progression = nn.ModuleList([conv_block(feat_dim, feat_dim, 3, 1),
+                                          conv_block(feat_dim, feat_dim, 3, 1),
+                                          conv_block(feat_dim, feat_dim, 3, 1),
                                           ConvBlock(feat_dim + 1, feat_dim, 3, 1, 4, 0)])
-
-        self.mnist_progression_0 = MnistConvBlock(feat_dim + 1, feat_dim, 3, 1)
-        self.mnist_progression_1 = MnistConvBlock(feat_dim + 1, feat_dim, 4, 0)
 
         self.from_rgb = nn.ModuleList([EqualConv2d(1, feat_dim, 1),
                                        EqualConv2d(1, feat_dim, 1),

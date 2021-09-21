@@ -78,10 +78,12 @@ def train(generator, discriminator, init_step, loader, max_step, total_iter=3000
             'in_channel': generator.in_channel,
             'input_code_dim': generator.in_channel,
             'pixel_norm': generator.pixel_norm,
-            'tanh': generator.tanh
+            'tanh': generator.tanh,
+            'use_mnist_conv_blocks': generator.use_mnist_conv_blocks
         },
         'discriminator': {
-            'feat_dim': discriminator.feat_dim
+            'feat_dim': discriminator.feat_dim,
+            'use_mnist_conv_blocks': discriminator.use_mnist_conv_blocks
         },
         'batch_size': data_loader.batch_size,
         'learning_rate': g_optimizer.defaults['lr'],
