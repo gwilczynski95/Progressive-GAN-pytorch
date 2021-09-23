@@ -90,6 +90,12 @@ class Discriminator(nn.Module):
                                           conv_block(feat_dim, feat_dim, 3, 1),
                                           ConvBlock(feat_dim + 1, feat_dim, 3, 1, 4, 0)])
 
+        # fixme: had to return to it because old models had it, so to successfully loading them those blocks
+        # fixme: are unfortunately needed
+        # fixme: REMOVE IT!
+        self.mnist_progression_0 = MnistConvBlock(feat_dim + 1, feat_dim, 3, 1)
+        self.mnist_progression_1 = MnistConvBlock(feat_dim + 1, feat_dim, 4, 0)
+
         self.from_rgb = nn.ModuleList([EqualConv2d(1, feat_dim, 1),
                                        EqualConv2d(1, feat_dim, 1),
                                        EqualConv2d(1, feat_dim, 1),
