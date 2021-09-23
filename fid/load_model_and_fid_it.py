@@ -9,7 +9,7 @@ from torchvision import datasets
 from tqdm import tqdm
 
 from mnist_pggan import Generator
-from musem_fid import calculate_activation_statistics, calculate_frechet_distance
+from fid.musem_fid import calculate_activation_statistics, calculate_frechet_distance
 
 
 def imagefolder_loader(path):
