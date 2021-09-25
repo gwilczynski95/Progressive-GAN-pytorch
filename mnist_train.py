@@ -270,7 +270,6 @@ def prepare_training(resume_path=None):
         config['current_overal_iteration'] = get_checkpoint_step_idx(latest_generator_path) - 1
         config['init_step'] = initial_step
         config['additional_iterations'] = 100000  # fixme: here set how long the continuation has to go on
-        config['total_iter'] = 30000  # fixme: mockup for debug purposes
     else:
         trial_name = 'test_5'
         input_code_size = 128
