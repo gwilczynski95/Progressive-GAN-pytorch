@@ -158,10 +158,15 @@ def upscale(feat):
 
 
 class Generator(nn.Module):
-    def __init__(self, input_code_dim=128, in_channel=128, pixel_norm=True, tanh=True):
+    def __init__(self, input_code_dim=128, in_channel=128, pixel_norm=True, tanh=True, max_step=6):
         super().__init__()
         self.input_dim = input_code_dim
+        self.in_channel = in_channel
         self.tanh = tanh
+        self.pixel_norm = pixel_norm
+        # todo: according to ProgressiveGAN the input layer which is represented here by input_layer
+        # todo: and progression_4 should be like ConvBlock but the first
+        # todo: conv block should be the one in below Sequential
         self.input_layer = nn.Sequential(
             EqualConvTranspose2d(input_code_dim, in_channel, 4, 1, 0),
             PixelNorm(),
@@ -183,7 +188,7 @@ class Generator(nn.Module):
         self.to_rgb_128 = EqualConv2d(in_channel // 4, 3, 1)
         self.to_rgb_256 = EqualConv2d(in_channel // 4, 3, 1)
 
-        self.max_step = 6
+        self.max_step = max_step
 
     def progress(self, feat, module):
         out = F.interpolate(feat, scale_factor=2, mode='bilinear', align_corners=False)  # upscaling
@@ -241,6 +246,7 @@ class Generator(nn.Module):
 class Discriminator(nn.Module):
     def __init__(self, feat_dim=128):
         super().__init__()
+        self.feat_dim = feat_dim
 
         self.progression = nn.ModuleList([ConvBlock(feat_dim // 4, feat_dim // 4, 3, 1),
                                           ConvBlock(feat_dim // 4, feat_dim // 2, 3, 1),
