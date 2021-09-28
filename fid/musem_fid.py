@@ -40,7 +40,9 @@ class MyDataset(Dataset):
             if x.dtype == np.float32:
                 x = np.tanh(x) + 1
                 x *= 127.5
-                x = x.astype(np.int8)
+                x = x.astype(np.uint8)
+            if x.shape[0] == 3:
+                x = np.transpose(x, (1, 2, 0))
             x = Image.fromarray(x).convert('RGB')
             x = self.transform(x)
 
