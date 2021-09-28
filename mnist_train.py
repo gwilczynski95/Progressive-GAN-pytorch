@@ -10,7 +10,7 @@ from torch.autograd import grad
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms, utils
 
-from fid.load_model_and_fid_it import get_checkpoint_step_idx, load_config
+from fid.load_mnist_model_and_fid_it import get_checkpoint_step_idx, load_config
 from mnist_pggan import Generator, Discriminator
 
 
