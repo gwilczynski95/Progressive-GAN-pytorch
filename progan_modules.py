@@ -124,11 +124,11 @@ class ConvBlock(nn.Module):
         convs = [EqualConv2d(in_channel, out_channel, kernel1, padding=pad1)]
         if pixel_norm:
             convs.append(PixelNorm())
-        convs.append(nn.LeakyReLU(0.1))
+        convs.append(nn.LeakyReLU(0.2))
         convs.append(EqualConv2d(out_channel, out_channel, kernel2, padding=pad2))
         if pixel_norm:
             convs.append(PixelNorm())
-        convs.append(nn.LeakyReLU(0.1))
+        convs.append(nn.LeakyReLU(0.2))
 
         self.conv = nn.Sequential(*convs)
 
@@ -144,7 +144,7 @@ class MnistConvBlock(nn.Module):
         convs = [EqualConv2d(in_channel, out_channel, kernel_size, padding=padding)]
         if pixel_norm:
             convs.append(PixelNorm())
-        convs.append(nn.LeakyReLU(0.1))
+        convs.append(nn.LeakyReLU(0.2))
 
         self.conv = nn.Sequential(*convs)
 
@@ -170,7 +170,7 @@ class Generator(nn.Module):
         self.input_layer = nn.Sequential(
             EqualConvTranspose2d(input_code_dim, in_channel, 4, 1, 0),
             PixelNorm(),
-            nn.LeakyReLU(0.1))
+            nn.LeakyReLU(0.2))
 
         self.progression_4 = ConvBlock(in_channel, in_channel, 3, 1, pixel_norm=pixel_norm)
         # simple block with two convolutions, pixel norms and leaky relu
@@ -316,7 +316,7 @@ class ConditionalGenerator(nn.Module):
         self.input_layer = nn.Sequential(
             EqualConvTranspose2d(input_code_dim + self.embedding_dim, in_channel, 4, 1, 0),
             PixelNorm(),
-            nn.LeakyReLU(0.1))
+            nn.LeakyReLU(0.2))
 
         self.progression_4 = ConvBlock(in_channel, in_channel, 3, 1, pixel_norm=pixel_norm)
         # simple block with two convolutions, pixel norms and leaky relu
@@ -456,6 +456,152 @@ class ConditionalDiscriminatorWgangp(nn.Module):
                     skip_embedding = self.embeddings[index + 1](label)
                     skip_rgb_with_embed = torch.cat([skip_rgb, skip_embedding.view(-1, 1, skip_rgb.shape[-2], skip_rgb.shape[-1])], 1)
                     skip_rgb = self.from_rgb[index + 1](skip_rgb_with_embed)
+                    out = (1 - alpha) * skip_rgb + alpha * out
+
+        out = out.squeeze(2).squeeze(2)  # squeeze redundant dimensions
+        # print(input.size(), out.size(), step)
+        out = self.linear(out)
+
+        return out
+
+
+class CorrectGenerator(nn.Module):
+    def __init__(self, input_code_dim=512, in_channel=512, pixel_norm=True, tanh=False, max_step=4):
+        super().__init__()
+        self.input_dim = input_code_dim
+        self.in_channel = in_channel
+        self.tanh = tanh
+        self.pixel_norm = pixel_norm
+
+        self.progression_4 = nn.Sequential(
+            EqualConvTranspose2d(input_code_dim, in_channel, 4, 1, 0),
+            PixelNorm(),
+            nn.LeakyReLU(0.2),
+            EqualConv2d(in_channel, in_channel, 3, padding=1),
+            PixelNorm(),
+            nn.LeakyReLU(0.2)
+        )
+
+        self.progression_8 = ConvBlock(in_channel, in_channel, 3, 1, pixel_norm=pixel_norm)
+        # simple block with two convolutions, pixel norms and leaky relu
+        self.progression_16 = ConvBlock(in_channel, in_channel, 3, 1, pixel_norm=pixel_norm)
+        self.progression_32 = ConvBlock(in_channel, in_channel, 3, 1, pixel_norm=pixel_norm)
+        # self.progression_64 = ConvBlock(in_channel, in_channel // 2, 3, 1, pixel_norm=pixel_norm)
+        # self.progression_128 = ConvBlock(in_channel // 2, in_channel // 4, 3, 1, pixel_norm=pixel_norm)
+        # self.progression_256 = ConvBlock(in_channel // 4, in_channel // 4, 3, 1, pixel_norm=pixel_norm)
+
+        self.to_rgb_4 = EqualConv2d(in_channel, 3, 1)
+        self.to_rgb_8 = EqualConv2d(in_channel, 3, 1)  # in_channel, out_channel, kernel_size
+        self.to_rgb_16 = EqualConv2d(in_channel, 3, 1)
+        self.to_rgb_32 = EqualConv2d(in_channel, 3, 1)
+        # self.to_rgb_64 = EqualConv2d(in_channel // 2, 3, 1)
+        # self.to_rgb_128 = EqualConv2d(in_channel // 4, 3, 1)
+        # self.to_rgb_256 = EqualConv2d(in_channel // 4, 3, 1)
+
+        self.max_step = max_step
+
+    def progress(self, feat, module):
+        out = F.interpolate(feat, scale_factor=2, mode='bilinear', align_corners=False)  # upscaling
+        out = module(out)
+        return out
+
+    def output(self, feat1, feat2, module1, module2, alpha):
+        if 0 <= alpha < 1:
+            skip_rgb = upscale(module1(feat1))
+            out = (1 - alpha) * skip_rgb + alpha * module2(feat2)
+        else:
+            out = module2(feat2)
+        if self.tanh:
+            return torch.tanh(out)
+        return out
+
+    def forward(self, input, step=0, alpha=-1):
+        if step > self.max_step:
+            step = self.max_step
+
+        out_4 = self.progression_4(input.view(-1, self.input_dim, 1, 1))
+        if step == 1:
+            if self.tanh:
+                return torch.tanh(self.to_rgb_4(out_4))
+            return self.to_rgb_4(out_4)
+
+        out_8 = self.progress(out_4, self.progression_8)
+        if step == 2:
+            if self.tanh:
+                return torch.tanh(self.to_rgb_8(out_8))
+            return self.output(out_4, out_8, self.to_rgb_4, self.to_rgb_8, alpha)
+
+        out_16 = self.progress(out_8, self.progression_16)
+        if step == 3:
+            return self.output(out_8, out_16, self.to_rgb_8, self.to_rgb_16, alpha)
+
+        out_32 = self.progress(out_16, self.progression_32)
+        if step == 4:
+            return self.output(out_16, out_32, self.to_rgb_16, self.to_rgb_32, alpha)
+
+        # out_64 = self.progress(out_32, self.progression_64)
+        # if step == 5:
+        #     return self.output(out_32, out_64, self.to_rgb_32, self.to_rgb_64, alpha)
+        #
+        # out_128 = self.progress(out_64, self.progression_128)
+        # if step == 6:
+        #     return self.output(out_64, out_128, self.to_rgb_64, self.to_rgb_128, alpha)
+        #
+        # out_256 = self.progress(out_128, self.progression_256)
+        # if step == 7:
+        #     return self.output(out_128, out_256, self.to_rgb_128, self.to_rgb_256, alpha)
+
+
+class CorrectDiscriminator(nn.Module):
+    def __init__(self, feat_dim=512):
+        super().__init__()
+        self.feat_dim = feat_dim
+
+        self.progression = nn.ModuleList([
+                                          # ConvBlock(feat_dim // 4, feat_dim // 4, 3, 1),
+                                          # ConvBlock(feat_dim // 4, feat_dim // 2, 3, 1),
+                                          # ConvBlock(feat_dim // 2, feat_dim, 3, 1),
+                                          ConvBlock(feat_dim, feat_dim, 3, 1),
+                                          ConvBlock(feat_dim, feat_dim, 3, 1),
+                                          ConvBlock(feat_dim, feat_dim, 3, 1),
+                                          ConvBlock(feat_dim + 1, feat_dim, 3, 1, 4, 0)])
+
+        self.from_rgb = nn.ModuleList([
+                                       # EqualConv2d(3, feat_dim // 4, 1),
+                                       # EqualConv2d(3, feat_dim // 4, 1),
+                                       # EqualConv2d(3, feat_dim // 2, 1),
+                                       EqualConv2d(3, feat_dim, 1),
+                                       EqualConv2d(3, feat_dim, 1),
+                                       EqualConv2d(3, feat_dim, 1),
+                                       EqualConv2d(3, feat_dim, 1)])
+
+        self.n_layer = len(self.progression)
+
+        self.linear = EqualLinear(feat_dim, 1)
+
+    def forward(self, input, step=0, alpha=-1):
+        for i in range(step, 0, -1):
+            index = self.n_layer - i
+
+            if i == step:
+                out = self.from_rgb[index](input)
+
+            if i == 1:
+                out_std = torch.sqrt(out.var(0, unbiased=False) + 1e-8)  # not sure what tensor.var(0) means
+                mean_std = out_std.mean()
+                mean_std = mean_std.expand(out.size(0), 1, 4, 4)
+                out = torch.cat([out, mean_std], 1)
+
+            out = self.progression[index](out)
+
+            if i > 1:
+                # out = F.avg_pool2d(out, 2)
+                out = F.interpolate(out, scale_factor=0.5, mode='bilinear', align_corners=False)
+
+                if i == step and 0 <= alpha < 1:
+                    # skip_rgb = F.avg_pool2d(input, 2)
+                    skip_rgb = F.interpolate(input, scale_factor=0.5, mode='bilinear', align_corners=False)
+                    skip_rgb = self.from_rgb[index + 1](skip_rgb)
                     out = (1 - alpha) * skip_rgb + alpha * out
 
         out = out.squeeze(2).squeeze(2)  # squeeze redundant dimensions
