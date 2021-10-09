@@ -9,6 +9,7 @@ from torch import optim
 from torch.autograd import grad
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms, utils
+import numpy as np
 
 from fid.load_mnist_model_and_fid_it import get_checkpoint_step_idx, load_config
 from progan_modules import CorrectGenerator, CorrectDiscriminator
@@ -51,7 +52,7 @@ def prepare_set(loader, step):
     return data_loader, dataset
 
 
-def load_config(resume_path, additional_iterations):
+def load_saved_config(resume_path, additional_iterations):
     checkpoints_path = os.path.join(resume_path, 'checkpoint')
 
     config = load_config(resume_path)
@@ -62,7 +63,7 @@ def load_config(resume_path, additional_iterations):
     discriminator_filename = config['latest_generator_path'].split('/')[-1].split('_')[0] + '_d.model'
     config['latest_discriminator_path'] = os.path.join(checkpoints_path, discriminator_filename)
     config['model_folder_name'] = config['latest_generator_path'].split('/')[-3]
-    config['trial_name'] = config['model_folder_name'].split('_')[1]
+    config['trial_name'] = config['model_folder_name'].split('_')[1]  # fixme: this is redundant
     config['current_overal_iteration'] = get_checkpoint_step_idx(config['latest_generator_path']) - 1
     config['additional_iterations'] = additional_iterations
     return config
@@ -74,7 +75,7 @@ def train(generator, discriminator, g_running, loader, config, main_path, contin
     gen_loss_val = 0
     grad_loss_val = 0
     iterations_per_mini_step = config['images_seen_per_mini_step'] // config['batch_size']
-
+    config['current_overal_iteration'] = 1400000
     if continue_training:
         pbar = tqdm(range(config['current_overal_iteration'], config['current_overal_iteration'] + config['additional_iterations']))
         post_fix = '_'.join(config['model_folder_name'].split('_')[-3:])
@@ -174,6 +175,7 @@ def train(generator, discriminator, g_running, loader, config, main_path, contin
             step += 1
             if step > config['max_step']:
                 alpha = 1
+                step_iteration = np.inf
                 step = config['max_step']
             data_loader, dataset = prepare_set(loader, step)
 
@@ -183,7 +185,8 @@ def train(generator, discriminator, g_running, loader, config, main_path, contin
             dataset = iter(data_loader)
             real_image, label = next(dataset)
 
-        step_iteration += 1
+        if step_iteration != np.inf:
+            step_iteration += 1
 
         ### 1. train Discriminator
         b_size = real_image.size(0)
@@ -281,7 +284,7 @@ def train(generator, discriminator, g_running, loader, config, main_path, contin
 def prepare_training(**kwargs):
     path_to_continue_training = kwargs.get('path_to_continue_training', None)
     if path_to_continue_training:
-        config = load_config(path_to_continue_training, kwargs.get('additional_iterations', 800000))
+        config = load_saved_config(path_to_continue_training, kwargs.get('additional_iterations', 800000))
     else:
         config = {'generator': {
             'in_channel': kwargs.get('channels', 512),
@@ -295,8 +298,9 @@ def prepare_training(**kwargs):
             'batch_size': kwargs.get('batch_size', 4), 'learning_rate': kwargs.get('learning_rate', 1e-3),
             'images_seen_per_mini_step': kwargs.get('images_seen_per_mini_step', 800000),
             'max_step': kwargs.get('maximal_step', 800000), 'trial_name': kwargs.get('trial_name', ''),
-            'init_step': kwargs.get('initial_step', 1), 'main_path': kwargs.get('main_path', ''),
-            'device': torch.device('cuda' if torch.cuda.is_available() else 'cpu')}
+            'init_step': kwargs.get('initial_step', 1), 'main_path': kwargs.get('main_path', '')}
+
+    config['device'] = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     generator = CorrectGenerator(**config['generator']).to(config['device'])
     discriminator = CorrectDiscriminator(**config['discriminator']).to(config['device'])
@@ -324,24 +328,24 @@ def prepare_training(**kwargs):
 
 if __name__ == '__main__':
     path_to_data = '/home/grzegorz/grzegos_world/13_september_2021/cifar/'
-    own_params = {
-        'trial_name': 'proper_cifar_test_1',
-        'z_dim': 512,
-        'channels': 512,
-        'batch_size': 4,
-        'pixel_norm': True,
-        'tanh': False,
-        'learning_rate': 1e-3,
-        'images_seen_per_mini_step': 800000,
-        'initial_step': 1,
-        'maximal_step': 4,
-        'data_path': path_to_data,
-        'main_path': '',
-    }
-    prepare_training(**own_params)
-    # continue_params = {
+    # own_params = {
+    #     'trial_name': 'proper_cifar_test_1',
+    #     'z_dim': 512,
+    #     'channels': 512,
+    #     'batch_size': 4,
+    #     'pixel_norm': True,
+    #     'tanh': False,
+    #     'learning_rate': 1e-3,
+    #     'images_seen_per_mini_step': 800000,
+    #     'initial_step': 1,
+    #     'maximal_step': 4,
     #     'data_path': path_to_data,
-    #     'path_to_continue_training': '',
-    #     'additional_iterations': 2 * 800000
+    #     'main_path': '',
     # }
-    # prepare_training(**continue_params)
+    # prepare_training(**own_params)
+    continue_params = {
+        'data_path': path_to_data,
+        'path_to_continue_training': '/home/grzegorz/grzegos_world/14_november_2021/trial_proper_cifar_test_1_2021-10-01_19_54',
+        'additional_iterations': 2 * 800000
+    }
+    prepare_training(**continue_params)
