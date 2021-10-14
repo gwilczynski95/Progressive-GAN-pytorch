@@ -11,7 +11,7 @@ from fid.load_cifar_model_and_fid_it import load_config
 
 
 def get_sample_iteration(checkpoint_path):
-    return int(checkpoint_path.split('/')[-1].split('.')[0])
+    return int(checkpoint_path.split('.')[0])
 
 
 def load_image(path, dtype='uint8'):
@@ -138,7 +138,7 @@ def resize_sample(data, out_shape, dtype):
 def main():
     path_to_training_info = '/home/grzegorz/grzegos_world/14_november_2021/trial_proper_cifar_test_1_2021-10-01_19_54'
     samples_path = os.path.join(path_to_training_info, 'sample')
-    samples_paths = sorted(os.listdir(samples_path), key=get_sample_iteration)
+    samples_paths = sorted([x for x in os.listdir(samples_path) if x.split('.')[-1] == 'png'], key=get_sample_iteration)
     samples_dtype = 'uint8'
     fps = 50
 
