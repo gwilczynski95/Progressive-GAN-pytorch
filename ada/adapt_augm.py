@@ -4,7 +4,10 @@ import torch
 
 
 class AdaptiveAugment:
-    def __init__(self, prev_ada_p: float, ada_target: float, ada_length: int, batch_size: int, device: Any):
+    def __init__(
+            self, prev_ada_p: float = 0., ada_target: float = 0.6, ada_length: int = 500000, batch_size: int = 4,
+            device: Any = 'cpu'
+    ):
         """
         Calculates probability p of Adaptive Discriminator Augmentation.
         Class taken from: github.com/POSTECH-CVLab/PyTorch-StudioGAN
@@ -21,7 +24,7 @@ class AdaptiveAugment:
         self.batch_size = batch_size
         self.rank = device
 
-        self.ada_aug_step = self.ada_target / self.ada_length
+        self.ada_aug_step = 1. / (self.ada_length / self.batch_size)
 
     def initialize(self):
         self.ada_augment = torch.tensor([0.0, 0.0], device=self.rank)
@@ -31,7 +34,7 @@ class AdaptiveAugment:
             self.ada_aug_p = 0.0
         return self.ada_aug_p
 
-    def update(self, logits):
+    def update(self, logits: torch.Tensor) -> float:
         ada_aug_data = torch.tensor((torch.sign(logits).sum().item(), logits.shape[0]), device=self.rank)
         self.ada_augment += ada_aug_data
         if self.ada_augment[1] > (self.batch_size * 4 - 1):
@@ -42,3 +45,7 @@ class AdaptiveAugment:
             self.ada_aug_p = min(1.0, max(0.0, self.ada_aug_p))
             self.ada_augment.mul_(0.0)
         return self.ada_aug_p
+
+    def set_batch_size(self, batch_size: int):
+        self.batch_size = batch_size
+        self.ada_aug_step = 1. / (self.ada_length / self.batch_size)
