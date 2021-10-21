@@ -147,7 +147,7 @@ class ConditionalGenerator(nn.Module):
         self.tanh = tanh
         self.use_mnist_conv_blocks = use_mnist_conv_blocks
         self.num_of_classes = num_of_classes
-        self.embedding_dim = num_of_classes  # maybe different embedding_dim? to investigate
+        self.embedding_dim = input_code_dim
         self.pixel_norm = pixel_norm
         self.embedding = nn.Embedding(num_of_classes, self.embedding_dim)
         self.input_layer = nn.Sequential(
@@ -190,7 +190,9 @@ class ConditionalGenerator(nn.Module):
 
         # add embedding
         embed = self.embedding(label)
-        data_in = torch.cat([input, embed], 1)
+        # concatenate normalized input and embedding
+        # this idea was taken from ADA
+        data_in = torch.cat([torch.nn.functional.normalize(input), torch.nn.functional.normalize(embed)], 1)
 
         out_4 = self.input_layer(data_in.view(-1, self.input_dim + self.embedding_dim, 1, 1))
         # here the latent vector is 'reshaped'
@@ -280,5 +282,64 @@ class ConditionalDiscriminatorWgangp(nn.Module):
         out = out.squeeze(2).squeeze(2)  # squeeze redundant dimensions
         # print(input.size(), out.size(), step)
         out = self.linear(out)
+
+        return out
+
+
+class ConditionalDiscriminatorAda(nn.Module):
+    def __init__(self, feat_dim=64, num_of_classes=10, use_mnist_conv_blocks=True):
+        super().__init__()
+        self.feat_dim = feat_dim
+        self.num_of_classes = num_of_classes
+        self.embedding_dim = feat_dim
+        self.use_mnist_conv_blocks = use_mnist_conv_blocks
+        conv_block = partial(MnistConvBlock) if use_mnist_conv_blocks else partial(ConvBlock)
+        self.progression = nn.ModuleList([conv_block(feat_dim, feat_dim, 3, 1),
+                                          conv_block(feat_dim, feat_dim, 3, 1),
+                                          conv_block(feat_dim, feat_dim, 3, 1),
+                                          ConvBlock(feat_dim + 1, feat_dim, 3, 1, 4, 0)])
+
+        # first attempt - prepare embeddings for every from_rgb to create just one more input dim
+        self.embedding = nn.Embedding(num_of_classes, embedding_dim=self.embedding_dim)
+
+        self.from_rgb = nn.ModuleList([EqualConv2d(1, feat_dim, 1),  # +1 because of the embedding
+                                       EqualConv2d(1, feat_dim, 1),
+                                       EqualConv2d(1, feat_dim, 1),
+                                       EqualConv2d(1, feat_dim, 1)])
+
+        self.n_layer = len(self.progression)
+
+        self.linear = EqualLinear(feat_dim, 1)
+
+    def forward(self, input_data, label, step=0, alpha=-1):
+        for i in range(step, -1, -1):
+            index = self.n_layer - i - 1
+
+            if i == step:
+                out = self.from_rgb[index](input_data)
+
+            if i == 0:
+                out_std = torch.sqrt(out.var(0, unbiased=False) + 1e-8)  # not sure what tensor.var(0) means
+                mean_std = out_std.mean()
+                mean_std = mean_std.expand(out.size(0), 1, 4, 4)
+                out = torch.cat([out, mean_std], 1)
+
+            out = self.progression[index](out)
+
+            if i > 0:
+                # out = F.avg_pool2d(out, 2)
+                out = F.interpolate(out, scale_factor=0.5, mode='bilinear', align_corners=False)
+
+                if i == step and 0 <= alpha < 1:
+                    # skip_rgb = F.avg_pool2d(input, 2)
+                    skip_rgb = F.interpolate(input_data, scale_factor=0.5, mode='bilinear', align_corners=False)
+                    skip_rgb = self.from_rgb[index + 1](skip_rgb)
+                    out = (1 - alpha) * skip_rgb + alpha * out
+
+        out = out.squeeze(2).squeeze(2)  # squeeze redundant dimensions
+        # print(input.size(), out.size(), step)
+        # add label information
+        embed = torch.nn.functional.normalize(self.embedding(label))
+        out = torch.diag(embed @ out.T)
 
         return out
