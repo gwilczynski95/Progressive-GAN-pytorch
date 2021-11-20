@@ -340,6 +340,9 @@ class ConditionalDiscriminatorAda(nn.Module):
         # print(input.size(), out.size(), step)
         # add label information
         embed = torch.nn.functional.normalize(self.embedding(label))
-        out = torch.diag(embed @ out.T)
 
-        return out
+        projection_scores = (out * embed).sum(dim=-1)
+        out = self.linear(out)
+        final_score = out.view(-1) + projection_scores
+
+        return final_score
