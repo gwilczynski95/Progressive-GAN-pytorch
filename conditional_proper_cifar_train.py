@@ -12,7 +12,8 @@ from torchvision import datasets, transforms, utils
 import numpy as np
 
 from fid.load_mnist_model_and_fid_it import get_checkpoint_step_idx, load_config
-from progan_modules import ConditionalCorrectGeneratorAda, ConditionalCorrectDiscriminatorAda
+from progan_modules import ConditionalCorrectGeneratorAda, ConditionalCorrectDiscriminatorAda, \
+    ConditionalCorrectGenerator, ConditionalCorrectDiscriminatorWgangp
 
 
 def accumulate(model1, model2, decay=0.999):
@@ -306,9 +307,9 @@ def prepare_training(**kwargs):
 
     config['device'] = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    generator = ConditionalCorrectGeneratorAda(**config['generator']).to(config['device'])
-    discriminator = ConditionalCorrectDiscriminatorAda(**config['discriminator']).to(config['device'])
-    g_running = ConditionalCorrectGeneratorAda(**config['generator']).to(config['device'])
+    generator = ConditionalCorrectGenerator(**config['generator']).to(config['device'])
+    discriminator = ConditionalCorrectDiscriminatorWgangp(**config['discriminator']).to(config['device'])
+    g_running = ConditionalCorrectGenerator(**config['generator']).to(config['device'])
 
     if path_to_continue_training:
         generator.load_state_dict(torch.load(config['latest_generator_path']))
@@ -333,7 +334,7 @@ def prepare_training(**kwargs):
 if __name__ == '__main__':
     path_to_data = '/home/grzegorz/grzegos_world/13_september_2021/cifar/'
     own_params = {
-        'trial_name': 'proper_cifar_conditional_ada_1',
+        'trial_name': 'proper_cifar_conditional_1',
         'z_dim': 10,
         'channels': 10,
         'batch_size': 4,
