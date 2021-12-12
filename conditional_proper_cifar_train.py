@@ -131,9 +131,11 @@ def train(generator, discriminator, g_running, loader, config, main_path, contin
                 'input_code_dim': generator.input_dim,
                 'pixel_norm': generator.pixel_norm,
                 'tanh': generator.tanh,
+                'do_equal_embed': generator.do_equal_embed,
             },
             'discriminator': {
                 'feat_dim': discriminator.feat_dim,
+                'do_equal_embed': discriminator.do_equal_embed,
             },
             'batch_size': config['batch_size'],
             'learning_rate': config['learning_rate'],
@@ -293,12 +295,14 @@ def prepare_training(**kwargs):
     else:
         config = {'generator': {
             'in_channel': kwargs.get('channels', 512),
+            'do_equal_embed': kwargs.get('do_equal_embed', False),
             'input_code_dim': kwargs.get('z_dim', 512),
             'pixel_norm': kwargs.get('pixel_norm', True),
             'tanh': kwargs.get('tanh', False),
         },
             'discriminator': {
                 'feat_dim': kwargs.get('channels', 512),
+                'do_equal_embed': kwargs.get('do_equal_embed', False),
             },
             'batch_size': kwargs.get('batch_size', 4), 'learning_rate': kwargs.get('learning_rate', 1e-3),
             'images_seen_per_mini_step': kwargs.get('images_seen_per_mini_step', 800000),
@@ -335,6 +339,7 @@ if __name__ == '__main__':
     path_to_data = '/home/grzegorz/grzegos_world/13_september_2021/cifar/'
     own_params = {
         'trial_name': 'proper_cifar_conditional_1',
+        'do_equal_embed': True,
         'z_dim': 10,
         'channels': 10,
         'batch_size': 4,

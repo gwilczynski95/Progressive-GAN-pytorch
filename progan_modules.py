@@ -106,6 +106,17 @@ class EqualLinear(nn.Module):
         return self.linear(input)
 
 
+class EqualEmbed(nn.Module):
+    def __init__(self, *args, **kwargs):
+        super(EqualEmbed, self).__init__()
+        embed = nn.Embedding(*args, **kwargs)
+        embed.weight.data.normal_()
+        self.embed = equal_lr(embed)
+
+    def forward(self, input):
+        return self.embed(input)
+
+
 class ConvBlock(nn.Module):
     def __init__(self, in_channel, out_channel, kernel_size, padding, kernel_size2=None, padding2=None,
                  pixel_norm=True):
@@ -588,7 +599,8 @@ class CorrectDiscriminator(nn.Module):
 
 
 class ConditionalCorrectGenerator(nn.Module):
-    def __init__(self, input_code_dim=512, num_of_classes=10, in_channel=512, pixel_norm=True, tanh=False, max_step=4):
+    def __init__(self, input_code_dim=512, num_of_classes=10, in_channel=512, pixel_norm=True, tanh=False, max_step=4,
+                 do_equal_embed=False):
         super().__init__()
         self.input_dim = input_code_dim
         self.in_channel = in_channel
@@ -597,7 +609,10 @@ class ConditionalCorrectGenerator(nn.Module):
         self.num_of_classes = num_of_classes
         self.embedding_dim = input_code_dim  # from ADA paper
 
-        self.embedding = nn.Embedding(num_of_classes, embedding_dim=self.embedding_dim)
+        if do_equal_embed:
+            self.embedding = EqualEmbed(num_embeddings=num_of_classes, embedding_dim=self.embedding_dim)
+        else:
+            self.embedding = nn.Embedding(num_of_classes, embedding_dim=self.embedding_dim)
 
         self.progression_4 = nn.Sequential(
             EqualConvTranspose2d(input_code_dim + self.embedding_dim, in_channel, 4, 1, 0),
@@ -667,7 +682,7 @@ class ConditionalCorrectGenerator(nn.Module):
 
 
 class ConditionalCorrectDiscriminatorWgangp(nn.Module):
-    def __init__(self, feat_dim=128, num_of_classes=10):
+    def __init__(self, feat_dim=128, num_of_classes=10, do_equal_embed=False):
         super().__init__()
         self.feat_dim = feat_dim
         self.num_of_classes = num_of_classes
@@ -677,13 +692,20 @@ class ConditionalCorrectDiscriminatorWgangp(nn.Module):
                                           ConvBlock(feat_dim, feat_dim, 3, 1),
                                           ConvBlock(feat_dim, feat_dim, 3, 1),
                                           ConvBlock(feat_dim + 1, feat_dim, 3, 1, 4, 0)])
-
-        self.embeddings = nn.ModuleList([
-            nn.Embedding(num_of_classes, 32**2),
-            nn.Embedding(num_of_classes, 16**2),
-            nn.Embedding(num_of_classes, 8**2),
-            nn.Embedding(num_of_classes, 4**2),
-        ])
+        if do_equal_embed:
+            self.embeddings = nn.ModuleList([
+                EqualEmbed(num_embeddings=num_of_classes, embedding_dim=32**2),
+                EqualEmbed(num_embeddings=num_of_classes, embedding_dim=16**2),
+                EqualEmbed(num_embeddings=num_of_classes, embedding_dim=8**2),
+                EqualEmbed(num_embeddings=num_of_classes, embedding_dim=4**2),
+            ])
+        else:
+            self.embeddings = nn.ModuleList([
+                nn.Embedding(num_of_classes, 32**2),
+                nn.Embedding(num_of_classes, 16**2),
+                nn.Embedding(num_of_classes, 8**2),
+                nn.Embedding(num_of_classes, 4**2),
+            ])
 
         self.from_rgb = nn.ModuleList([
                                        EqualConv2d(3 + 1, feat_dim, 1),
