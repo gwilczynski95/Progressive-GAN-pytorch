@@ -1,15 +1,17 @@
 import os
-
+from PIL import Image
+import PIL
 import cv2
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
 
-def show_boundary_box():
-    image_dir = '/home/grzegorz/grzegos_world/11_july_2021/images/still-life'
-    images_list = os.listdir(image_dir)
 
+def show_boundary_box_cut():
+    image_dir = 'C:/Users/Olaf1/Desktop/images'
+    images_list = os.listdir(image_dir)
+    n = 0
     for image_filename in images_list:
         image_path = os.path.join(image_dir, image_filename)
         raw_image = cv2.imread(image_path)
@@ -55,9 +57,17 @@ def show_boundary_box():
             first_point = first_point[::-1]
             second_point = second_point[::-1]
 
+        #cut image
+        cut_image = raw_image[first_point[1]:second_point[1], first_point[0]:second_point[0]]
+        #TODO give right pathway for save
         processed_image = cv2.rectangle(processed_image, first_point, second_point, (255, 0, 0), 2)
         plt.imshow(processed_image)
+        n += 1
+        name = f"image{n}.jpg"
+        cv2.imwrite(name, cut_image)
+
+
 
 
 if __name__ == '__main__':
-    show_boundary_box()
+    show_boundary_box_cut()
