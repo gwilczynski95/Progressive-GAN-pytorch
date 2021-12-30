@@ -1,39 +1,58 @@
-import copy
 import os
 import shutil
 
 import numpy as np
 import cv2
-import matplotlib.pyplot as plt
 import mtcnn
 from PIL import Image
 
+from data import utils
+
 
 def main():
-    image_dir = '/home/grzegorz/projects/museum/images/portrait'
-    properly_cut_samples_path = ''
-    ignored_samples_path = ''
-    images_list = os.listdir(image_dir)
+    main_input_path = '/home/grzegorz/projects/museum/data/images/portrait'
+    main_properly_cut_samples_path = '/home/grzegorz/projects/museum/data/properly_cut_images/portrait'
+    main_badly_cut_samples_path = '/home/grzegorz/projects/museum/data/badly_cut_images/portrait'
+    images_list = os.listdir(main_input_path)
+
+    try:
+        os.mkdir(main_properly_cut_samples_path)
+        os.mkdir(main_badly_cut_samples_path)
+        properly_cut_samples = []
+        badly_cut_samples = []
+    except FileExistsError:
+        properly_cut_samples = os.listdir(main_properly_cut_samples_path)
+        badly_cut_samples = os.listdir(main_badly_cut_samples_path)
 
     dnn_model = mtcnn.MTCNN()
     for image_filename in images_list:
-        image_path = os.path.join(image_dir, image_filename)
-        raw_image = np.array(Image.open(image_path))
-        if len(raw_image.shape) < 3:
-            raw_image = cv2.imread(image_path)
+        image_path = os.path.join(main_input_path, image_filename)
+        out_path = os.path.join(main_properly_cut_samples_path, image_filename)
+        bad_out_path = os.path.join(main_badly_cut_samples_path, image_filename)
+
+        if image_filename in properly_cut_samples or image_filename in badly_cut_samples:
+            continue
+
+        raw_image = utils.load_image(image_path)
+
+        if raw_image is None:
+            print(f'bad: {bad_out_path}')
+            shutil.copy(image_path, bad_out_path)
+            continue
 
         if raw_image.shape[0] == raw_image.shape[1]:
-            pass  # save this image because it's already a rectangle
+            utils.save_image(out_path, raw_image)
+            continue
 
         # do it for dnn model
         dnn_faces = dnn_model.detect_faces(raw_image)
         for face_info in dnn_faces:
             x, y, width, height = face_info['box']
-            image_with_rect = cv2.rectangle(raw_image, (x, y), (x + width, y + height), (0, 255, 0), 2)
+            # image_with_rect = cv2.rectangle(raw_image, (x, y), (x + width, y + height), (0, 255, 0), 2)
 
         if not dnn_faces or len(dnn_faces) > 1:
-            relative_image_path = os.path.join(ignored_samples_path, image_filename)
-            shutil.copy(image_path, relative_image_path)
+            print(f'bad: {bad_out_path}')
+            shutil.copy(image_path, bad_out_path)
             continue
 
         x_center = (x + (x + width)) / 2
@@ -42,9 +61,7 @@ def main():
         cut_image = cut_based_on_point(raw_image, x_center, y_center)
 
         # save image
-        out_path = os.path.join(properly_cut_samples_path, image_filename)
-        cut_image = Image.fromarray(out_path)
-        cut_image.save(out_path)
+        utils.save_image(out_path, cut_image)
 
         # plt.imshow(raw_image)
         # plt.imshow(cut_image)
