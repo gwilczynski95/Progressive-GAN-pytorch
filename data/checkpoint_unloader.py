@@ -24,4 +24,7 @@ if __name__ == '__main__':
     not_checkpoints = [x for x in os.listdir(destination_checkpoint_folder) if '.model' not in x]
     for not_checkpoint_filename in not_checkpoints:
         not_checkpoint_path = os.path.join(destination_checkpoint_folder, not_checkpoint_filename)
-        os.remove(not_checkpoint_path)
+        if os.path.isdir(not_checkpoint_path):
+            os.rmdir(not_checkpoint_path)
+        else:
+            os.remove(not_checkpoint_path)
