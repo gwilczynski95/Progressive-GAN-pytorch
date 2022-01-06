@@ -608,6 +608,7 @@ class ConditionalCorrectGenerator(nn.Module):
         self.pixel_norm = pixel_norm
         self.num_of_classes = num_of_classes
         self.embedding_dim = input_code_dim  # from ADA paper
+        self.do_equal_embed = do_equal_embed
 
         if do_equal_embed:
             self.embedding = EqualEmbed(num_embeddings=num_of_classes, embedding_dim=self.embedding_dim)
@@ -627,11 +628,15 @@ class ConditionalCorrectGenerator(nn.Module):
         # simple block with two convolutions, pixel norms and leaky relu
         self.progression_16 = ConvBlock(in_channel, in_channel, 3, 1, pixel_norm=pixel_norm)
         self.progression_32 = ConvBlock(in_channel, in_channel, 3, 1, pixel_norm=pixel_norm)
+        self.progression_64 = ConvBlock(in_channel, in_channel // 2, 3, 1, pixel_norm=pixel_norm)
+        self.progression_128 = ConvBlock(in_channel // 2, in_channel // 4, 3, 1, pixel_norm=pixel_norm)
 
         self.to_rgb_4 = EqualConv2d(in_channel, 3, 1)
         self.to_rgb_8 = EqualConv2d(in_channel, 3, 1)  # in_channel, out_channel, kernel_size
         self.to_rgb_16 = EqualConv2d(in_channel, 3, 1)
         self.to_rgb_32 = EqualConv2d(in_channel, 3, 1)
+        self.to_rgb_64 = EqualConv2d(in_channel // 2, 3, 1)
+        self.to_rgb_128 = EqualConv2d(in_channel // 4, 3, 1)
 
         self.max_step = max_step
 
@@ -680,20 +685,33 @@ class ConditionalCorrectGenerator(nn.Module):
         if step == 4:
             return self.output(out_16, out_32, self.to_rgb_16, self.to_rgb_32, alpha)
 
+        out_64 = self.progress(out_32, self.progression_64)
+        if step == 5:
+            return self.output(out_32, out_64, self.to_rgb_32, self.to_rgb_64, alpha)
+
+        out_128 = self.progress(out_64, self.progression_128)
+        if step == 6:
+            return self.output(out_64, out_128, self.to_rgb_64, self.to_rgb_128, alpha)
+
 
 class ConditionalCorrectDiscriminatorWgangp(nn.Module):
     def __init__(self, feat_dim=128, num_of_classes=10, do_equal_embed=False):
         super().__init__()
         self.feat_dim = feat_dim
         self.num_of_classes = num_of_classes
+        self.do_equal_embed = do_equal_embed
 
         self.progression = nn.ModuleList([
+                                          ConvBlock(feat_dim // 4, feat_dim // 2, 3, 1),
+                                          ConvBlock(feat_dim // 2, feat_dim, 3, 1),
                                           ConvBlock(feat_dim, feat_dim, 3, 1),
                                           ConvBlock(feat_dim, feat_dim, 3, 1),
                                           ConvBlock(feat_dim, feat_dim, 3, 1),
                                           ConvBlock(feat_dim + 1, feat_dim, 3, 1, 4, 0)])
         if do_equal_embed:
             self.embeddings = nn.ModuleList([
+                EqualEmbed(num_embeddings=num_of_classes, embedding_dim=128**2),
+                EqualEmbed(num_embeddings=num_of_classes, embedding_dim=64**2),
                 EqualEmbed(num_embeddings=num_of_classes, embedding_dim=32**2),
                 EqualEmbed(num_embeddings=num_of_classes, embedding_dim=16**2),
                 EqualEmbed(num_embeddings=num_of_classes, embedding_dim=8**2),
@@ -701,6 +719,8 @@ class ConditionalCorrectDiscriminatorWgangp(nn.Module):
             ])
         else:
             self.embeddings = nn.ModuleList([
+                nn.Embedding(num_of_classes, 128**2),
+                nn.Embedding(num_of_classes, 64**2),
                 nn.Embedding(num_of_classes, 32**2),
                 nn.Embedding(num_of_classes, 16**2),
                 nn.Embedding(num_of_classes, 8**2),
@@ -708,6 +728,8 @@ class ConditionalCorrectDiscriminatorWgangp(nn.Module):
             ])
 
         self.from_rgb = nn.ModuleList([
+                                       EqualConv2d(3 + 1, feat_dim // 4, 1),
+                                       EqualConv2d(3 + 1, feat_dim // 2, 1),
                                        EqualConv2d(3 + 1, feat_dim, 1),
                                        EqualConv2d(3 + 1, feat_dim, 1),
                                        EqualConv2d(3 + 1, feat_dim, 1),
