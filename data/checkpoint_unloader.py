@@ -1,4 +1,5 @@
 import os
+import shutil
 import zipfile
 from pathlib import Path
 
@@ -25,6 +26,6 @@ if __name__ == '__main__':
     for not_checkpoint_filename in not_checkpoints:
         not_checkpoint_path = os.path.join(destination_checkpoint_folder, not_checkpoint_filename)
         if os.path.isdir(not_checkpoint_path):
-            os.rmdir(not_checkpoint_path)
+            shutil.rmtree(not_checkpoint_path, ignore_errors=True)
         else:
             os.remove(not_checkpoint_path)
